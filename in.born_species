@@ -1,0 +1,49 @@
+# Per-species affine Born component of C_ijkl via finite-difference
+# V_i C_{i,jk} = [W_{i,k}(+d) - W_{i,k}(-d)]/(2d)
+# B_i = (C11+C22+C33+2(C12+C23+C31))/(9 Omega_i)
+# W_i = stress/atom [bar*A^3] Axial strains d=1,2,3 
+
+variable temp    index 700
+variable scratch index /scratch/hpcl-mat269/lls
+variable traj    index ${scratch}/pos_${temp}.dump2
+variable pot     index /home/leopold/MolecularDynamics/Cu66Zr34/Cu-Zr_4.eam.fs
+variable out     index ${scratch}/bornpa_${temp}.dump
+variable delta   index 1.0e-3
+variable every   index 100
+variable nframe  index 1000
+
+units       metal
+atom_style  atomic
+boundary    p p p
+read_data   ${scratch}/CuZr_${temp}.out
+pair_style  eam/fs
+pair_coeff  * * ${pot} Zr Cu
+
+compute SA all stress/atom NULL
+shell rm -f ${out}
+
+label FRAME
+variable i loop ${nframe}
+  variable t equal (v_i-1)*v_every
+  label DIRS
+  variable d loop 3
+    # +delta strain
+    read_dump ${traj} ${t} x y z box yes replace yes purge no
+    if "${d} == 1" then "change_box all x scale $(1.0+v_delta) remap"
+    if "${d} == 2" then "change_box all y scale $(1.0+v_delta) remap"
+    if "${d} == 3" then "change_box all z scale $(1.0+v_delta) remap"
+    run 0 post no
+    write_dump all custom ${out} id type c_SA[1] c_SA[2] c_SA[3] c_SA[4] c_SA[5] c_SA[6] &
+       modify sort id first yes append yes format float %.6g
+    # -delta stain
+    read_dump ${traj} ${t} x y z box yes replace yes purge no
+    if "${d} == 1" then "change_box all x scale $(1.0-v_delta) remap"
+    if "${d} == 2" then "change_box all y scale $(1.0-v_delta) remap"
+    if "${d} == 3" then "change_box all z scale $(1.0-v_delta) remap"
+    run 0 post no
+    write_dump all custom ${out} id type c_SA[1] c_SA[2] c_SA[3] c_SA[4] c_SA[5] c_SA[6] &
+       modify sort id first yes append yes format float %.6g
+    next d
+    jump SELF DIRS
+  next i
+  jump SELF FRAME

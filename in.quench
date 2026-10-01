@@ -1,0 +1,47 @@
+# Quench and Equilibration Script 
+
+variable        outpath string /scratch/hpcl-mat269/lls/PRODUCTION_DATA/
+variable        T_0     equal 750              #Initial Temp
+variable        T       equal 700             #Target Temp
+variable        rate    equal 1.0e11            #Cooling Rate
+variable        seed    equal 12345
+variable        nsteps  equal round((v_T_0-v_T)/v_rate*1.0e12/dt) #Timesteps
+variable        nptrel  equal 500000        #Number of NPT relaxation steps
+variable        nvtrel  equal 3000000          #Number of NVT equilibration steps
+variable        vinst   equal vol
+
+units           metal
+boundary        p p p
+atom_style      atomic
+timestep        0.001
+
+read_data       ${outpath}CuZr_${T_0}.out
+
+pair_style      eam/fs
+pair_coeff      * * /home/leopold/MolecularDynamics/Cu66Zr34/Cu-Zr_4.eam.fs Zr Cu
+
+thermo          100
+thermo_style    custom step temp press pe etotal vol density
+
+reset_timestep  0
+fix             1 all npt temp ${T_0} ${T} 0.1 iso 0 0 1.0
+fix             2 all ave/time 100 1 100 c_thermo_temp v_vinst &
+                file quench_${rate}.txt
+restart         500000 restart_quench.*
+run             ${nsteps}
+unfix           2
+unfix           1
+
+fix             1 all npt temp ${T} ${T} 0.1 iso 0 0 1.0
+fix             3 all ave/time 10 1000 10000 v_vinst ave running
+run             ${nptrel}
+variable        scale equal (f_3/vol)^(1.0/3.0)
+change_box      all x scale ${scale} y scale ${scale} z scale ${scale} remap
+unfix           3
+unfix           1
+
+fix             1 all nvt temp ${T} ${T} 0.1
+run             ${nvtrel}
+unfix           1
+
+write_data      ${outpath}CuZr_${T}.input

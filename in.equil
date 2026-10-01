@@ -1,0 +1,24 @@
+# NVT equilibration of Cu66Zr34 
+
+variable        storepath string /scratch/hpcl-mat269/lls/PRODUCTION_DATA/
+variable        rfile index none
+
+if "${rfile} == none" then &
+  "units metal" "dimension 3" "boundary p p p" "atom_style atomic" &
+  "read_data ${storepath}CuZr_${temp}.input" &
+else &
+  "read_restart ${rfile}"
+
+pair_style      eam/fs
+pair_coeff      * * /home/leopold/MolecularDynamics/Cu66Zr34/Cu-Zr_4.eam.fs Zr Cu
+timestep        0.001
+fix             1 all nvt temp ${temp} ${temp} $(100.0*dt)
+
+thermo          10000
+thermo_style    custom step temp press pe etotal vol density
+
+timer           timeout 23:30:00 every 1000
+restart         500000 restart_equil_T${temp}.a restart_equil_T${temp}.b
+
+run             ${total} upto
+write_restart   restart_equil_T${temp}.*

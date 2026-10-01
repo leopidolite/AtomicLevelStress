@@ -1,0 +1,51 @@
+# NVT production of Cu66Zr34 
+
+variable        storepath string /scratch/hpcl-mat269/lls/PRODUCTION_DATA/
+variable        rfile index none
+variable        efile index none
+variable 	STORE_EVERY index 100
+
+if "${rfile} == none" then &
+  "read_restart ${efile}" "reset_timestep 0" &
+else &
+  "read_restart ${rfile}"
+
+pair_style      eam/fs
+pair_coeff      * * /home/leopold/MolecularDynamics/Cu66Zr34/Cu-Zr_4.eam.fs Zr Cu
+timestep        0.001
+
+variable        rad     atom (type==1)*1.60+(type==2)*1.28
+compute         als     all stress/atom NULL virial
+compute         vor     all voronoi/atom radius v_rad
+compute         Tk      all temp
+compute         Pr      all pressure Tk
+fix             1       all nvt temp ${temp} ${temp} $(100.0*dt)
+
+dump            1       all custom ${STORE_EVERY} ${storepath}als_${temp}.dump2 &
+                        id type c_vor[1] c_vor[2] &
+                        c_als[1] c_als[2] c_als[3] c_als[4] c_als[5] c_als[6]
+dump_modify     1       sort id format float %.6g
+dump            2       all custom ${STORE_EVERY} ${storepath}pos_${temp}.dump2 id type xu yu zu
+dump_modify     2       sort id format float %.6g
+
+variable        fmode string file
+if "${rfile} != none" then &
+  "dump_modify 1 append yes delay $(step+1)" &
+  "dump_modify 2 append yes delay $(step+1)" &
+  "variable fmode string append"
+
+variable        vinst   equal vol
+variable        peinst  equal pe
+fix             glob    all ave/time 100 1 100 c_Tk c_Pr v_vinst v_peinst &
+                        ${fmode} ${storepath}thermo_${temp}.txt &
+                        title2 "step temp press vol pe"
+
+thermo          1000
+thermo_style    custom step temp press pe etotal vol density
+
+timer           timeout 23:30:00 every 1000
+restart         500000 restart_prod_T${temp}.a restart_prod_T${temp}.b
+
+run             ${total} upto
+write_restart   restart_prod_T${temp}.*
+if "$(step) >= ${total}" then "write_data ${storepath}CuZr_${temp}.out"
